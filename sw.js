@@ -1,6 +1,6 @@
 /* Caches the whole app on first visit so it works with no signal afterwards.
    Bump CACHE when you upload a new index.html, or the old one keeps serving. */
-const CACHE = "ptcoach-v9";
+const CACHE = "ptcoach-v10";
 const FILES = ["./", "./index.html", "./manifest.json",
                "./icon-192.png", "./icon-512.png", "./icon-mask.png"];
 
