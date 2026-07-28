@@ -279,12 +279,20 @@
   }
   @keyframes sway { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 
+  /* Gold stars vanished against the gold sunburst. Black reads on every wedge of
+     it, and the filled ones go cream with a black keyline so they can't dissolve
+     into a bright patch of the burst either. No backing plate needed. */
   .pips { display: flex; justify-content: center; gap: 8px; margin: 26px 0 6px; flex-wrap: wrap; }
   .pip {
-    width: 26px; height: 26px; background: var(--card); transition: background .25s, transform .25s;
+    width: 26px; height: 26px; background: var(--ink);
+    transition: background .25s, transform .25s, filter .25s;
     clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
   }
-  .pip.on { background: var(--gold); transform: scale(1.25) rotate(-12deg); }
+  .pip.on {
+    background: var(--card); transform: scale(1.25) rotate(-12deg);
+    filter: drop-shadow(1.6px 0 0 var(--ink)) drop-shadow(-1.6px 0 0 var(--ink))
+            drop-shadow(0 1.6px 0 var(--ink)) drop-shadow(0 -1.6px 0 var(--ink));
+  }
   .pip-label {
     text-align: center; font-size: 12px; font-weight: 900; text-transform: uppercase;
     letter-spacing: .08em; color: var(--card); margin-bottom: 8px; min-height: 18px;
@@ -360,7 +368,7 @@
 
   /* photo: takes what's left, never squashed below something usable */
   #app.session .ex-art {
-    flex: 1 1 auto; min-height: 74px; margin-bottom: 9px; padding: 6px;
+    flex: 1 1 auto; min-height: 56px; margin-bottom: 9px; padding: 6px;
     align-items: center;
   }
   #app.session .ex-art > img { max-height: 100%; height: 100%; object-fit: contain; }
@@ -370,10 +378,24 @@
   #app.session .ex-vid video { height: 100%; object-fit: contain; }
 
   /* instructions give ground first — they scroll inside their own box */
+  /* The instruction box never shrinks and never scrolls at normal phone heights.
+     max-height is border-box, so it has to include the 20px padding and 10px
+     border on top of the text — 8.4em is 6 lines at line-height 1.4, and the
+     longest instruction in the app is 4. Below 700px tall there genuinely isn't
+     room, so the media query at the bottom lets it give way there instead. */
   #app.session .ex-instr {
-    flex: 0 1 auto; min-height: 2.6em; overflow-y: auto;
+    flex: 0 0 auto; min-height: 0;
+    max-height: calc(8.4em + 32px);
+    overflow-y: auto; overscroll-behavior: contain;
     font-size: clamp(12px, 1.75vh, 15.5px); padding: 10px 12px; line-height: 1.4;
+    scrollbar-width: thin; scrollbar-color: var(--pink) transparent;
   }
+  @media (max-height: 700px) {
+    #app.session .ex-instr { flex-shrink: 1; }
+  }
+  #app.session .ex-instr::-webkit-scrollbar { width: 7px; }
+  #app.session .ex-instr::-webkit-scrollbar-track { background: transparent; }
+  #app.session .ex-instr::-webkit-scrollbar-thumb { background: var(--pink); border: 2px solid var(--line); }
   #app.session .caution { font-size: clamp(11px, 1.5vh, 14px); padding: 8px 11px; margin-top: 8px; }
   #app.session .pips { margin: clamp(7px, 1.5vh, 22px) 0 4px; gap: 6px; }
   #app.session .pip { width: clamp(15px, 2.6vh, 26px); height: clamp(15px, 2.6vh, 26px); }
@@ -494,7 +516,7 @@ const ROUTINES = {
         instr: "Look straight up toward the ceiling, opening the front of the neck. Go gently — this one is easy to overdo." },
 
       /* pause here: no group, so it waits for a tap */
-      { name: "Bend Back", type: "hold", hold: 4, rest: 1, reps: 10, art: "bend_back",
+      { name: "Bend Back", type: "hold", hold: 3, rest: 1, reps: 10, art: "bend_back",
         instr: "Draw your head straight back over your shoulders, making a double chin. Hold, release, repeat. Eyes stay level — this is a glide backward, not a nod." },
 
       /* group:"hand" — four more 30-second holds, back to back */
