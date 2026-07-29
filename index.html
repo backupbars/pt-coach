@@ -825,6 +825,24 @@
   }
 
 
+  html[data-theme="trainer"] #app.faint {
+    min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+  }
+  html[data-theme="trainer"] .faintwrap { text-align: center; animation: faintdrop__trainer .5s ease-out; }
+  html[data-theme="trainer"] .faintname {
+    font-family: var(--big); font-size: 30px; line-height: 1.05; letter-spacing: -.02em;
+    color: var(--panel); text-shadow: 3px 3px 0 var(--edge); text-transform: uppercase;
+  }
+  html[data-theme="trainer"] .faintmsg {
+    font-family: var(--display); font-size: 15px; color: var(--gold);
+    margin-top: 12px; letter-spacing: .1em; text-shadow: 2px 2px 0 var(--edge);
+  }
+  @keyframes faintdrop__trainer {
+    0%   { transform: translateY(-14px); opacity: 0; }
+    60%  { transform: translateY(3px);   opacity: 1; }
+    100% { transform: translateY(0); }
+  }
+
 /* ===================== UNICORN ===================== */
   html[data-theme="unicorn"] {
     --ink: #4a2260; --ink2: #9070a8; --card: rgba(255,255,255,.93);
@@ -1132,7 +1150,7 @@
       padding-top: calc(12px + env(safe-area-inset-top));
       padding-bottom: calc(12px + env(safe-area-inset-bottom));
     }
-    html[data-theme] #app.home, html[data-theme] #app.done {
+    html[data-theme] #app.home, html[data-theme] #app.done, html[data-theme] #app.faint {
       padding-top: calc(18px + env(safe-area-inset-top));
       padding-bottom: calc(56px + env(safe-area-inset-bottom));
     }
@@ -1414,6 +1432,26 @@ const THEMES = {
   trainer: {
     label: "TRAINER",
     wave: "square",     // chiptune blip
+    exitLabel: "\u2715 RUN",
+    skipLabel: "FLEE \u25b8",
+    // the exercise name is the opponent; this line is the move you hit it with
+    moves: {
+      side_r: "SLOW TURN", side_l: "SLOW TURN",
+      bend_r: "DEEP TILT", bend_l: "DEEP TILT",
+      bend_dr: "LOW DIAGONAL", bend_dl: "LOW DIAGONAL",
+      bend_ur: "HIGH DIAGONAL", bend_ul: "HIGH DIAGONAL",
+      bend_d: "CHIN DROP", bend_u: "SKY GAZE", bend_back: "CHIN TUCK",
+      hand_rp: "PALM PULL", hand_lp: "PALM PULL",
+      hand_rb: "KNUCKLE PULL", hand_lb: "KNUCKLE PULL",
+      sideBend: "IRON TILT", extension: "BACK PRESS", flexion: "FRONT PRESS",
+      rotation: "PIVOT LOCK", retraction: "BALL PRESS",
+      bicep: "WALL HANG", scapY: "BLADE SQUEEZE",
+      median: "MEDIAN GLIDE", ulnar: "ULNAR GLIDE", radial: "RADIAL GLIDE",
+      marching: "CORE MARCH", rows: "PULL BACK", latPull: "LAT DROP"
+    },
+    dose: (ex, base) => "\u2694 " + (THEMES.trainer.moves[ex.art] || "STRETCH")
+                        + " \u00b7 " + base.replace(" \u2014 auto", ""),
+    faint: true,
     hp: true,
     pipsDrain: true,    // it's a fight: hearts start full and empty
     rpg: true,
@@ -1653,7 +1691,7 @@ const app = document.getElementById("app");
 let S = null;          // session state
 let timerId = null;
 
-function clearTimer(){ if (timerId) { clearInterval(timerId); timerId = null; } }
+function clearTimer(){ if (timerId) { clearInterval(timerId); clearTimeout(timerId); timerId = null; } }
 
 /* ================= HOME ================= */
 
@@ -1789,12 +1827,12 @@ function renderExercise(){
 
   app.innerHTML = `
     <div class="topbar">
-      <button class="exit" onclick="confirmExit()">✕ Exit</button>
+      <button class="exit" onclick="confirmExit()">${T().exitLabel || "\u2715 Exit"}</button>
       <div class="ex-count">${S.i + 1} of ${total}</div>
     </div>
     <div class="progressbar"><div style="width:${pct}%"></div></div>
     <div class="ex-name">${ex.name}</div>
-    <div class="ex-dose">${doseText(ex)}</div>
+    <div class="ex-dose">${T().dose ? T().dose(ex, doseText(ex)) : doseText(ex)}</div>
     ${sideBannerHtml(ex, S.rep)}
     ${!T().hp ? "" : (() => { const [d, t] = workUnits(ex); const l = t - d;
         const cls = (l / t) > .5 ? "hi" : (l / t) > .2 ? "md" : "lo";
@@ -1809,7 +1847,7 @@ function renderExercise(){
     ${ex.caution ? `<div class="caution">⚠️ ${ex.caution}</div>` : ""}
     ${stage}
     <div class="navrow">
-      <button class="skip" onclick="nextExercise()">Skip →</button>
+      <button class="skip" onclick="nextExercise()">${T().skipLabel || "Skip \u2192"}</button>
     </div>
   `;
 }
@@ -1841,8 +1879,10 @@ function startHold(){
   runPhase("work");
 }
 
-/* Breather between two back-to-back isometrics, then the next one self-starts. */
-const PREP_SECS = 3;
+/* Breather between two back-to-back exercises, then the next one self-starts.
+   In Trainer the faint screen adds ~1.3s in front of this, so the real gap
+   there is a little over two seconds. */
+const PREP_SECS = 1;
 function startPrep(){
   const ex = curEx();
   const ui = holdUI();
@@ -1994,15 +2034,40 @@ function finishGlideSide(){
 }
 
 /* auto = we got here because a timer ran out, not because Skip was tapped.
-   Only then may the next exercise start itself. */
+   Only then may the next exercise start itself — and only then does the
+   previous one "faint", since fleeing isn't a victory. */
 function nextExercise(auto){
   clearTimer();
   const prev = ROUTINES[S.routine].exercises[S.i];
   S.i++; S.rep = 0; S.set = 0; S.timing = false;
-  if (S.i >= ROUTINES[S.routine].exercises.length) { finishSession(); return; }
-  const next = curEx();
-  renderExercise();
-  if (auto && prev && prev.group && prev.group === next.group) startPrep();
+  const finished = S.i >= ROUTINES[S.routine].exercises.length;
+
+  const proceed = () => {
+    if (finished) { finishSession(); return; }
+    const next = curEx();
+    renderExercise();
+    if (auto && prev && prev.group && prev.group === next.group) startPrep();
+  };
+
+  if (auto && prev && T().faint) showFaint(prev, proceed);
+  else proceed();
+}
+
+/* A beat between exercises: the one you just finished goes down. */
+const FAINT_MS = 1300;
+function showFaint(ex, then){
+  app.className = "faint";
+  app.innerHTML = `
+    <div class="faintwrap">
+      <div class="faintname">${ex.name}</div>
+      <div class="faintmsg">fainted!</div>
+    </div>`;
+  beep(420, .14);
+  setTimeout(() => beep(300, .16), 130);
+  setTimeout(() => beep(200, .42), 260);
+  buzz([70, 60, 140]);
+  clearTimer();
+  timerId = setTimeout(() => { timerId = null; then(); }, FAINT_MS);
 }
 
 function confirmExit(){
