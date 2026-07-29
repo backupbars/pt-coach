@@ -882,13 +882,16 @@
   }
   html[data-theme="unicorn"] .day { text-align: center; flex: 1; min-width: 0; }
   html[data-theme="unicorn"] .day .lbl { font-size: 9px; font-weight: 800; color: var(--ink2); margin-bottom: 6px; letter-spacing: .04em; }
+  /* font-size:0 alone hides the tick inside the div. NOT color:transparent —
+     Chrome applies the text colour's alpha to colour emoji, so a transparent
+     parent renders the unicorn in the ::after completely invisible. */
   html[data-theme="unicorn"] .day .dot {
     width: 25px; height: 25px; margin: 0 auto; background: none;
-    border: none; clip-path: none; color: transparent; font-size: 0;
+    border: none; clip-path: none; font-size: 0;
     display: flex; align-items: center; justify-content: center;
   }
   html[data-theme="unicorn"] .day .dot::after {
-    content: "\01F984"; font-size: 19px; line-height: 1;
+    content: "\01F984"; font-size: 19px; line-height: 1; color: initial;
     filter: grayscale(1) opacity(.42); transition: filter .25s, transform .25s;
   }
   html[data-theme="unicorn"] .day.done .dot::after {
