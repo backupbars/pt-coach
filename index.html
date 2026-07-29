@@ -30,7 +30,13 @@
 }
 
 /* ===================== style switcher ===================== */
-  .topstrip { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+  .topstrip { display: flex; justify-content: flex-end; gap: 7px; margin-bottom: 6px; }
+  .remrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 9px 0; }
+  .remrow label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .remrow input[type="checkbox"] { width: 17px; height: 17px; accent-color: currentColor; }
+  .remrow input[type="time"] { font: inherit; font-size: 14px; padding: 5px 8px; border: 2px solid currentColor; border-radius: 8px; background: rgba(255,255,255,.75); color: inherit; }
+  .remnote { font-size: 11px; opacity: .65; margin: -5px 0 9px 25px; }
+  .rcard.remind .btnrow { margin-top: 12px; }
   html[data-theme="supreme"] .themebtn {
     font-family: inherit; font-size: 11px; font-weight: 900; text-transform: uppercase;
     letter-spacing: .08em; padding: 7px 11px; cursor: pointer;
@@ -1363,7 +1369,8 @@ const THEMES = {
   },
   unicorn: {
     label: "\u2726 SPARKLE",
-    wave: "triangle",   // softer than sine, dreamier than square
+    wave: "triangle",
+    chime: true,        // glass bell instead of a beep
     hp: false,
     pipsDrain: false,   // stars light up as you go
     rpg: false,
@@ -1462,6 +1469,99 @@ function cycleTheme(){
 }
 
 
+
+/* ================= REMINDERS =================
+   A web page can't reliably wake your phone later — Chrome's Notification
+   Triggers API was abandoned for exactly that reason. So instead of pretending,
+   this writes a calendar file with repeating events and alarms attached, and
+   lets the calendar app do the part it's actually good at. Times are stored
+   locally; the file is generated on the device, nothing is uploaded. */
+
+const RKEY = "pt-coach-reminders";
+const R_DEFAULT = { stretch: "08:00", daily: "18:00", gym: "17:30",
+                    on: { stretch: true, daily: true, gym: false } };
+let remindOpen = false;
+
+function loadRem(){
+  try { return Object.assign({}, R_DEFAULT, JSON.parse(localStorage.getItem(RKEY)) || {}); }
+  catch(e){ return Object.assign({}, R_DEFAULT); }
+}
+function saveRem(r){ try { localStorage.setItem(RKEY, JSON.stringify(r)); } catch(e){} }
+function toggleRemind(){ remindOpen = !remindOpen; renderHome(); }
+function setRem(key, val){ const r = loadRem(); r[key] = val; saveRem(r); }
+function setRemOn(key, val){ const r = loadRem(); r.on[key] = val; saveRem(r); }
+
+function icsEscape(t){ return String(t).replace(/([,;\\])/g, "\\$1"); }
+
+function buildICS(){
+  const r = loadRem();
+  const p = n => String(n).padStart(2, "0");
+  const now = new Date();
+  const stamp = now.getUTCFullYear() + p(now.getUTCMonth()+1) + p(now.getUTCDate()) + "T"
+              + p(now.getUTCHours()) + p(now.getUTCMinutes()) + "00Z";
+  // start tomorrow so today's slot isn't retroactively "missed"
+  const d0 = new Date(now); d0.setDate(now.getDate() + 1);
+  const day = d0.getFullYear() + p(d0.getMonth()+1) + p(d0.getDate());
+
+  const events = [
+    ["stretch", "Neck Stretches",            "FREQ=DAILY",                  r.stretch, "10 × 30s holds, bend-backs, hand stretches"],
+    ["daily",   "Daily Neck & Nerve Routine","FREQ=DAILY",                  r.daily,   "5 isometrics, bicep stretch, 3 nerve glides, scap Y's, marching"],
+    ["gym",     "PT Strengthening (Gym)",    "FREQ=WEEKLY;BYDAY=MO,WE,FR",  r.gym,     "Rows + lat pulldown, cable machine"]
+  ].filter(e => r.on[e[0]]);
+
+  // no TZID: a floating local time, which every calendar app reads as "this
+  // clock time wherever you are" — no timezone table to embed or get wrong
+  const L = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//PT Coach//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH"];
+  events.forEach(([key, title, rrule, time, note]) => {
+    const [hh, mm] = time.split(":");
+    L.push("BEGIN:VEVENT",
+      "UID:ptcoach-" + key + "-" + day + "@ptcoach.local",
+      "DTSTAMP:" + stamp,
+      "DTSTART:" + day + "T" + hh + mm + "00",
+      "DURATION:PT15M",
+      "RRULE:" + rrule,
+      "SUMMARY:" + icsEscape(title),
+      "DESCRIPTION:" + icsEscape(note),
+      "BEGIN:VALARM","TRIGGER:PT0M","ACTION:DISPLAY",
+      "DESCRIPTION:" + icsEscape(title),
+      "END:VALARM","END:VEVENT");
+  });
+  L.push("END:VCALENDAR");
+  return L.join("\r\n") + "\r\n";      // RFC 5545 wants CRLF
+}
+
+function downloadReminders(){
+  const r = loadRem();
+  if (!r.on.stretch && !r.on.daily && !r.on.gym) { alert("Turn on at least one reminder first."); return; }
+  const blob = new Blob([buildICS()], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "pt-coach-reminders.ics";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  beep(880, .25);
+}
+
+function remindHtml(){
+  if (!remindOpen) return "";
+  const r = loadRem();
+  const row = (key, label, extra) => `
+    <div class="remrow">
+      <label><input type="checkbox" ${r.on[key] ? "checked" : ""}
+             onchange="setRemOn('${key}', this.checked)"> ${label}</label>
+      <input type="time" value="${r[key]}" onchange="setRem('${key}', this.value)">
+    </div>${extra ? `<div class="remnote">${extra}</div>` : ""}`;
+  return `
+    <div class="rcard remind">
+      <h2>Reminders</h2>
+      <div class="meta">Pick your times, download the file, then open it once. Your calendar does the reminding from then on.</div>
+      ${row("stretch", "Neck Stretches", "")}
+      ${row("daily", "Daily Routine", "")}
+      ${row("gym", "Gym", "Mon / Wed / Fri")}
+      <div class="btnrow"><button class="primary" onclick="downloadReminders()">Download reminder file</button></div>
+    </div>`;
+}
+
 /* ================= STORAGE ================= */
 
 const KEY = "pt-coach-log";
@@ -1491,13 +1591,50 @@ let audioCtx = null;
 function beep(freq, dur){
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.frequency.value = freq; o.type = T().wave;
-    g.gain.setValueAtTime(.25, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + dur);
-    o.connect(g); g.connect(audioCtx.destination);
-    o.start(); o.stop(audioCtx.currentTime + dur);
+    (T().chime ? sfxChime : sfxTone)(audioCtx, freq, dur);
   } catch(e){}
+}
+
+/* One oscillator, hard attack, quick decay. A beep. */
+function sfxTone(ctx, freq, dur){
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = freq; o.type = T().wave;
+  g.gain.setValueAtTime(.25, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(); o.stop(ctx.currentTime + dur);
+}
+
+/* Sparkle: a music box, not a beep. A single pitch sounded flat, so each cue is
+   a little rising figure instead — root, second, fifth, octave — an octave above
+   where the beep sat, because cute lives high. Each note is a struck bell: near
+   instant attack, sine partials at 2x, 3x and a glassy 4.7x, and a long tail so
+   they ring into each other. Short cues get one note and a shorter tail so the
+   ticks don't turn to mush; the finish fanfare gets the full figure three times
+   over. Small random detune per strike so a run sounds hand-played. */
+function sfxChime(ctx, freq, dur){
+  const base = freq * 2;
+  const figure = [1, 1.125, 1.5, 2];
+  const notes = dur <= .10 ? figure.slice(0, 1)
+              : dur <= .20 ? figure.slice(0, 2)
+              : dur <= .28 ? figure.slice(0, 3)
+                           : figure;
+  const len = dur <= .10 ? .38 : .60;
+  const detune = 1 + (Math.random() - .5) * .02;
+  notes.forEach((r, i) => strike(ctx, base * r * detune, ctx.currentTime + i * .055, len));
+}
+
+/* one bell: sine partials, 10ms attack, exponential decay */
+function strike(ctx, f, t0, len){
+  [[1, .17], [2, .05], [3.01, .05], [4.7, .02]].forEach(([mult, vol]) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.value = f * mult;
+    g.gain.setValueAtTime(.0001, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + .010);
+    g.gain.exponentialRampToValueAtTime(.0005, t0 + len);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t0); o.stop(t0 + len);
+  });
 }
 function buzz(ms){ if (navigator.vibrate) navigator.vibrate(ms); }
 
@@ -1544,7 +1681,10 @@ function renderHome(){
   }).join("");
 
   app.innerHTML = `
-    <div class="topstrip"><button class="themebtn" onclick="cycleTheme()">\u25c6 ${T().label}</button></div>
+    <div class="topstrip">
+      <button class="themebtn" onclick="toggleRemind()" title="Reminders">\u23f0</button>
+      <button class="themebtn" onclick="cycleTheme()">\u25c6 ${T().label}</button>
+    </div>
     <div class="h-title">PT Coach</div>
     <div class="week">${weekHtml}</div>
     <div class="statline">${T().rpg ? `LV. <b>${totalSessions}</b><br>` : ""}This week: <b>${dailyThisWeek}/7</b> daily · <b>${stretchThisWeek}/7</b> stretches · <b>${strengthThisWeek}/3</b> gym${totalSessions ? ` &nbsp;·&nbsp; ${totalSessions} sessions total` : ""}</div>
@@ -1579,6 +1719,7 @@ function renderHome(){
       </div>
     </div>
 
+    ${remindHtml()}
     <div class="encourage">${dailyDoneToday ? T().cheers[Math.floor(Math.random() * T().cheers.length)] : nudge}</div>
   `;
 }
